@@ -108,7 +108,9 @@ if(dataset=='CIFAR10'):
   eta_l_fedadam = 0.01
   eta_l_fedavgm = 0.01
   eta_l_fedavgm_exp = 0.01
+  eta_l_dts = 0.01
 
+  eta_g_dts = 1
   eta_g_fedavg = 1
   eta_g_scaffold = 1
   eta_g_fedprox = 1
@@ -117,7 +119,6 @@ if(dataset=='CIFAR10'):
   eta_g_fedavgm = 1
  
   
-
   epsilon_fedexp = 0.001
   epsilon_scaffold_exp = 0.001
   epsilon_fedprox_exp = 0.001
@@ -134,6 +135,9 @@ elif(dataset=='CINIC10'):
   eta_l_fedadam = 0.01
   eta_l_fedavgm = 0.01
   eta_l_fedavgm_exp = 0.01
+  eta_l_dts = 0.01
+
+  eta_g_dts = 1
 
   eta_g_fedavg = 1
   eta_g_scaffold = 1
@@ -161,6 +165,9 @@ elif(dataset=='CIFAR100'):
   eta_l_fedadam = 0.01
   eta_l_fedavgm = 0.01
   eta_l_fedavgm_exp = 0.01
+  eta_l_dts = 0.01
+
+  eta_g_dts = 1
 
   eta_g_fedavg = 1
   eta_g_scaffold = 1
@@ -187,7 +194,9 @@ elif(dataset=='EMNIST'):
   eta_l_fedadam = 0.1
   eta_l_fedavgm = 0.316
   eta_l_fedavgm_exp = 0.316
+  eta_l_dts = 0.1
 
+  eta_g_dts = 1
   eta_g_fedavg = 1
   eta_g_scaffold = 1
   eta_g_fedadagrad = 0.316
@@ -231,13 +240,13 @@ if (dataset=='CIFAR100'):
 
 
 
-eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedprox_exp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp}
+eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedprox_exp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp, 'dts': eta_l_dts}
 
-eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive'}
+eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive', 'dts': eta_g_dts}
 
-epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':epsilon_fedprox_exp, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp}
+epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':epsilon_fedprox_exp, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp, 'dts': 0}
 
-mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0}
+mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0, 'dts':0}
 
 
 
@@ -265,6 +274,13 @@ for alg in algs:
 
 
     net_glob = copy.deepcopy(net_glob_org)
+
+    if alg == 'dts':
+      feature_dim = get_feature_dim(model)
+      client_tempnets = {
+          i: TempNet(feature_dim=feature_dim, hidden_dim=128).to(args['device'])
+          for i in range(n)
+      }
 
 
     net_glob.train()
@@ -339,16 +355,32 @@ for alg in algs:
 
             
 
-        for i in ind:
+        # for i in ind:
 
 
-            grad = get_grad(copy.deepcopy(net_glob),args, args_hyperparameters, dataset_train[i], alg, i,  mem_mat, c)
+        #     grad = get_grad(copy.deepcopy(net_glob),args, args_hyperparameters, dataset_train[i], alg, i,  mem_mat, c)
 
-            grad_norm_sum += p[i]*torch.linalg.norm(grad)**2
+        #     grad_norm_sum += p[i]*torch.linalg.norm(grad)**2
 
-            grad_avg = grad_avg + p[i]*grad
+        #     grad_avg = grad_avg + p[i]*grad
             
-            p_sum += p[i]
+        #     p_sum += p[i]
+
+        for i in ind:
+          if alg == 'dts':
+              # Pass client's own TempNet in; store the updated version back
+              grad, client_tempnets[i] = get_grad(
+                  copy.deepcopy(net_glob), args, args_hyperparameters,
+                  dataset_train[i], alg, i, mem_mat, c,
+                  tempnet=client_tempnets[i]
+              )
+          else:
+              grad = get_grad(copy.deepcopy(net_glob), args, args_hyperparameters,
+                              dataset_train[i], alg, i, mem_mat, c)
+
+          grad_norm_sum += p[i] * torch.linalg.norm(grad)**2
+          grad_avg = grad_avg + p[i] * grad
+          p_sum += p[i]
 
 
         

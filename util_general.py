@@ -10,7 +10,8 @@ def test_img(net_g, datatest, args):
     l = len(data_loader)
     for idx, (data, target) in enumerate(data_loader):
         data, target = data.to(args['device']), target.to(args['device'])
-        log_probs = net_g(data)
+        output = net_g(data)
+        log_probs = output[1] if isinstance(output, tuple) else output
         test_loss += F.cross_entropy(log_probs, target, reduction='sum').item()
         y_pred = log_probs.data.max(1, keepdim=True)[1]
         correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
@@ -233,9 +234,88 @@ class LocalUpdate_fedprox(object):
             
         return model_to_return
 
+class LocalUpdate_dts(object):
+    """
+    Base DTS local update.
+    Trains backbone + TempNet jointly with temperature-scaled cross-entropy.
+    Returns the backbone parameter delta (same interface as LocalUpdate).
+    The caller is responsible for passing in and receiving back the TempNet.
+    """
+    def __init__(self, args, args_hyperparameters, dataset=None):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.dataset = dataset
+        self.ldr_train = DataLoader(dataset, batch_size=self.args['bs'], shuffle=True)
+        self.lr = args_hyperparameters['eta_l']
+        self.use_data_augmentation = args_hyperparameters['use_augmentation']
+        self.use_gradient_clipping = args_hyperparameters['use_gradient_clipping']
+        self.max_norm = args_hyperparameters['max_norm']
+        self.weight_decay = args_hyperparameters['weight_decay']
+        self.transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+        ])
 
+    def train_and_sketch(self, net, tempnet):
+        """
+        Args:
+            net     : backbone (copy of global model)
+            tempnet : TempNet (copy of global TempNet)
+        Returns:
+            backbone_delta : parameter delta vector for the backbone
+            tempnet        : updated TempNet (returned so the server can aggregate)
+        """
+        net.train()
+        tempnet.train()
 
-def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx, mem_mat, c):
+        backbone_opt = torch.optim.SGD(
+            net.parameters(), lr=self.lr, momentum=0,
+            weight_decay=self.weight_decay
+        )
+        # TempNet uses the same local LR; you can tune this separately if needed
+        temp_opt = torch.optim.SGD(tempnet.parameters(), lr=self.lr, momentum=0)
+
+        prev_net = copy.deepcopy(net)
+
+        step_count = 0
+        while True:
+            for images, labels in self.ldr_train:
+                images = images.to(self.args['device'])
+                labels = labels.to(self.args['device'])
+
+                if self.use_data_augmentation:
+                    images = self.transform_train(images)
+
+                backbone_opt.zero_grad()
+                temp_opt.zero_grad()
+
+                features, logits = net(images)               # backbone returns (features, logits)
+                tau = tempnet(features.detach())              # τ predicted from features; detach to avoid
+                                                              # double-backprop through backbone
+                scaled_logits = logits / tau
+                loss = self.loss_func(scaled_logits, labels)
+                loss.backward()
+
+                if self.use_gradient_clipping:
+                    torch.nn.utils.clip_grad_norm_(net.parameters(), self.max_norm)
+
+                backbone_opt.step()
+                temp_opt.step()
+
+                step_count += 1
+                if step_count >= self.args['cp']:
+                    break
+            if step_count >= self.args['cp']:
+                break
+
+        with torch.no_grad():
+            vec_curr = parameters_to_vector(net.parameters())
+            vec_prev = parameters_to_vector(prev_net.parameters())
+            backbone_delta = vec_curr - vec_prev
+
+        return backbone_delta, tempnet
+
+def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx, mem_mat, c, tempnet=None):
 
     if(alg=='fedadam' or alg == 'fedexp' or alg =='fedavg' or alg=='fedavgm' or alg=='fedavgm(exp)' or alg=='fedadam' or alg=='fedadagrad'):
 
@@ -261,6 +341,13 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx, mem_mat, 
          grad = local.train_and_sketch(copy.deepcopy(net_glob))
 
          return grad
-
-
     
+    elif alg == 'dts':
+        # NOTE: 'tempnet' must be added as an optional keyword argument to get_grad
+        local = LocalUpdate_dts(args, args_hyperparameters, dataset=dataset)
+        
+        grad, updated_tempnet = local.train_and_sketch(copy.deepcopy(net_glob), tempnet)
+        
+        return grad, updated_tempnet
+
+  

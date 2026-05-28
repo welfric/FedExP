@@ -20,9 +20,9 @@ class FedNet(nn.Module):
         x = self.pool(F.relu(self.conv2(x)))
         x = x.view(-1, 64*5*5)
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        features = F.relu(self.fc2(x))   # ← penultimate representation
+        logits   = self.fc3(features)
+        return features, logits
 
 
 class EMNIST_CNN(nn.Module):
@@ -44,10 +44,10 @@ class EMNIST_CNN(nn.Module):
         x = self.dropout1(x)
 
         x = x.view(x.size(0), -1)
-        x = func.relu(self.fc1(x))
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        return x
+        features = func.relu(self.fc1(x))   # ← penultimate representation
+        features = self.dropout2(features)
+        logits   = self.fc2(features)
+        return features, logits
     
 class BasicBlock(nn.Module):
     expansion = 1
@@ -95,9 +95,9 @@ class ResNet(nn.Module):
         out = self.layer3(out)
         out = self.layer4(out)
         out = F.avg_pool2d(out, 3)
-        out = out.view(out.size(0), -1)
-        out = self.linear(out)
-        return out
+        features = out.view(out.size(0), -1)   # ← penultimate representation (512-d)
+        logits   = self.linear(features)
+        return features, logits
 def resnet18(n_c):
     return ResNet(BasicBlock, [2,2,2,2],num_classes=n_c)
 
@@ -109,3 +109,30 @@ def get_model(model,n_c):
     return FedNet(n_c)
   elif(model=='EMNIST_CNN'):
     return EMNIST_CNN()
+
+def get_feature_dim(model_name):
+    """Return the penultimate-layer dimension for TempNet construction."""
+    if model_name == 'resnet18':
+        return 512
+    elif model_name == 'CNN':
+        return 192
+    elif model_name == 'EMNIST_CNN':
+        return 128
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+class TempNet(nn.Module):
+    """Temperature Network for adaptive logit scaling"""
+    def __init__(self, feature_dim=512, hidden_dim=128, tau_min=0.05, tau_max=2.0):
+        super().__init__()
+        self.fc1 = nn.Linear(feature_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, 1)
+        self.tau_min = tau_min
+        self.tau_max = tau_max
+
+    def forward(self, x):
+        h = F.relu(self.fc1(x))
+        raw = self.fc2(h)
+        tau = torch.sigmoid(raw)
+        tau = tau * (self.tau_max - self.tau_min) + self.tau_min
+        return tau.mean()
