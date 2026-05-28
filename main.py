@@ -240,13 +240,13 @@ if (dataset=='CIFAR100'):
 
 
 
-eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedprox_exp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp, 'dts': eta_l_dts}
+eta_l_algs = {'fedavgm(exp)': eta_l_fedavgm_exp, 'fedavgm': eta_l_fedavgm,'fedadam':eta_l_fedadam, 'fedprox':eta_l_fedprox, 'fedprox(exp)': eta_l_fedprox_exp, 'fedavg': eta_l_fedavg, 'fedadagrad': eta_l_fedadagrad, 'fedexp': eta_l_fedexp, 'scaffold': eta_l_scaffold, 'scaffold(exp)': eta_l_scaffold_exp, 'dts': eta_l_dts, 'fedexp-dts': eta_l_fedexp}
 
-eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive', 'dts': eta_g_dts}
+eta_g_algs = {'fedavgm(exp)': 'adaptive', 'fedavgm': eta_g_fedavgm,'fedadam':eta_g_fedadam, 'fedprox':eta_g_fedprox, 'fedprox(exp)': 'adaptive', 'fedavg':eta_g_fedavg, 'fedadagrad': eta_g_fedadagrad, 'fedexp': 'adaptive', 'scaffold': eta_g_scaffold, 'scaffold(exp)': 'adaptive', 'dts': eta_g_dts, 'fedexp-dts': 'adaptive'}
 
-epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':epsilon_fedprox_exp, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp, 'dts': 0}
+epsilon_algs = {'fedavgm(exp)': epsilon_fedavgm_exp, 'fedavgm': 0,'fedadam': 0, 'fedprox':0, 'fedprox(exp)':epsilon_fedprox_exp, 'fedavg': 0, 'fedadagrad':0, 'fedexp':epsilon_fedexp, 'scaffold': 0, 'scaffold(exp)': epsilon_scaffold_exp, 'dts': 0, 'fedexp-dts': epsilon_fedexp}
 
-mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0, 'dts':0}
+mu_algs = {'fedavgm(exp)': 0, 'fedavgm': 0, 'fedadam':0, 'fedprox': mu_fedprox, 'fedprox(exp)': mu_fedprox, 'fedavg':0, 'fedadagrad':0, 'fedexp':0, 'scaffold':0, 'scaffold(exp)':0, 'dts':0, 'fedexp-dts':0}
 
 
 
@@ -275,7 +275,7 @@ for alg in algs:
 
     net_glob = copy.deepcopy(net_glob_org)
 
-    if alg == 'dts':
+    if alg == 'dts' or alg == 'fedexp-dts':
       feature_dim = get_feature_dim(model)
       client_tempnets = {
           i: TempNet(feature_dim=feature_dim, hidden_dim=128).to(args['device'])
@@ -367,7 +367,7 @@ for alg in algs:
         #     p_sum += p[i]
 
         for i in ind:
-          if alg == 'dts':
+          if alg == 'dts' or alg == 'fedexp-dts':
               # Pass client's own TempNet in; store the updated version back
               grad, client_tempnets[i] = get_grad(
                   copy.deepcopy(net_glob), args, args_hyperparameters,
@@ -459,7 +459,7 @@ for alg in algs:
         
         net_eval = copy.deepcopy(net_glob)
 
-        if(alg=='fedexp' or alg=='scaffold(exp)' or alg=='fedprox(exp)' or alg=='fedavgm(exp)'):
+        if(alg=='fedexp' or alg == 'fedexp-dts' or alg=='scaffold(exp)' or alg=='fedprox(exp)' or alg=='fedavgm(exp)'):
           vector_to_parameters(w_vec_avg, net_eval.parameters())
 
         

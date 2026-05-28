@@ -325,7 +325,13 @@ def get_grad(net_glob, args, args_hyperparameters,  dataset, alg, idx, mem_mat, 
         grad = local.train_and_sketch(copy.deepcopy(net_glob))
 
         return grad
+    elif alg == 'fedexp-dts':
+        local = LocalUpdate_dts(args, args_hyperparameters, dataset=dataset)
 
+        grad, updated_tempnet = local.train_and_sketch(copy.deepcopy(net_glob), tempnet)
+
+        return grad, updated_tempnet
+    
     elif(alg=='scaffold' or alg=='scaffold(exp)'):
 
          local = LocalUpdate_scaffold(args, args_hyperparameters, dataset=dataset)
