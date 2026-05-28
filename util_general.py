@@ -52,7 +52,8 @@ class LocalUpdate(object):
               if(self.use_data_augmentation == True):
                 images = self.transform_train(images)
               net.zero_grad()
-              log_probs = net(images)
+              output = net(images)
+              log_probs = output[1] if isinstance(output, tuple) else output
               loss = self.loss_func(log_probs, labels)
               loss.backward()
                 
